@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Образовательная Платформа</title>
+    
+    <!-- Стабильные CDN-библиотеки Firebase v8 -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 40px auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; }
+        .hidden { display: none !important; }
+        button { background-color: #4285F4; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #357ae8; }
+        .btn-logout { background-color: #d9534f; float: right; padding: 8px 15px; font-size: 14px; }
+        .card { background: #fafafa; padding: 15px; border-left: 4px solid #4285F4; margin-bottom: 15px; border-radius: 4px; text-align: left; }
+        .admin-zone { border-left-color: #e67e22; background: #fff5eb; }
+        input, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        h1, h2 { color: #2c3e50; }
+        #error-logger { color: #d9534f; background: #fdf2f2; padding: 10px; border-radius: 4px; margin-top: 15px; font-family: monospace; font-size: 13px; text-align: left; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- СИСТЕМНЫЙ ЛОГЕР ОШИБОК (Поможет увидеть сбой, если он случится) -->
+    <div id="error-logger" class="hidden"></div>
+
+    <!-- ЭКРАН ВХОДА -->
+    <div id="auth-screen">
+        <h1>Добро пожаловать в Академию</h1>
+        <p>Для получения знаний и прохождения тестов авторизуйтесь через Gmail аккаунт.</p>
+        <br>
+        <button id="btn-login">Войти через Google (Gmail)</button>
+    </div>
+
+    <!-- ГЛАВНЫЙ ЭКРАН -->
+    <div id="main-screen" class="hidden">
+        <div style="border-bottom: 2px solid #eee; padding-bottom: 15px; margin-bottom: 20px; text-align: left;">
+            Добро пожаловать, <strong id="user-name">Загрузка...</strong> 
+            <span id="user-role" style="font-size:12px; padding:3px 8px; background:#ddd; border-radius:10px; margin-left:10px;">Студент</span>
+            <button id="btn-logout" class="btn-logout">Выйти</button>
+        </div>
+
+        <!-- АДМИН ПАНЕЛЬ -->
+        <div id="admin-panel" class="card admin-zone hidden">
+            <h2>Панель администратора</h2>
+            <input type="text" id="lecture-title" placeholder="Название лекции">
+            <textarea id="lecture-content" rows="4" placeholder="Содержимое лекции (текст или HTML)"></textarea>
+            <button id="btn-add-lecture" style="background-color: #e67e22;">Опубликовать лекцию</button>
+        </div>
+
+        <!-- КОНТЕНТ СТУДЕНТА -->
+        <div id="student-panel">
+            <h2 style="text-align: left;">Доступные знания и лекции</h2>
+            <div id="lectures-container">Синхронизация данных...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Функция безопасного вывода ошибок на экран, если они возникнут
+    function showRuntimeError(message) {
+        var logger = document.getElementById('error-logger');
+        logger.classList.remove('hidden');
+        logger.innerHTML += "<div><strong>Ошибка:</strong> " + message + "</div>";
+    }
+
+    window.onerror = function(msg, url, line) {
+        showRuntimeError(msg + " (Строка: " + line + ")");
+        return false;
+    };
+
+    try {
+        // Конфигурация вашего проекта Firebase
+        var firebaseConfig = {
+          apiKey: "AIzaSyBA2CM4hDgqFB1zrwE5es3JgMsA2Aupygo",
+          authDomain: "://firebaseapp.com",
+          projectId: "phdtest-95627"
+        };
+        
+        // Инициализация
+        firebase.initializeApp(firebaseConfig);
+        var db = firebase.firestore();
+        var auth = firebase.auth();
+
+        // Почта главного администратора
+        var ADMIN_EMAILS = ["nam.vil.mmtb@gmail.com"]; 
+
+        // Обработка кнопки логина через Redirect (самый стабильный метод)
+        document.getElementById('btn-login').addEventListener('click', function() {
+            var provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithRedirect(provider).catch(function(err) {
+                showRuntimeError("Сбой провайдера: " + err.message);
+            });
+        });
+
+        // Выход из аккаунта
+        document.getElementById('btn-logout').addEventListener('click', function() {
+            auth.signOut().then(function() {
+                window.location.reload();
+            });
+        });
+
+        // Отслеживание входа/выхода пользователя
+        auth.onAuthStateChanged(function(user) {
+            if (user) {
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('main-screen').classList.remove('hidden');
+                document.getElementById('user-name').innerText = user.displayName || user.email;
+
+                // Проверка прав администратора
+                if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase().trim())) {
+                    document.getElementById('user-role').innerText = "Администратор";
+                    document.getElementById('user-role').style.background = "#e67e22";
+                    document.getElementById('user-role').style.color = "white";
+                    document.getElementById('admin-panel').classList.remove('hidden');
+                } else {
+                    document.getElementById('user-role').innerText = "Студент";
+                    document.getElementById('user-role').style.background = "#2ecc71";
+                    document.getElementById('user-role').style.color = "white";
+                    document.getElementById('admin-panel').classList.add('hidden');
+                }
+                loadLectures();
+            } else {
+                document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('main-screen').classList.add('hidden');
+            }
+        });
+
+        // Логика создания новой лекции администратором
+        document.getElementById('btn-add-lecture').addEventListener('click', function() {
+            var title = document.getElementById('lecture-title').value;
+            var content = document.getElementById('lecture-content').value;
+            if(!title || !content) return alert("Пожалуйста, заполните все поля лекции!");
+
+            db.collection("lectures").add({
+                title: title,
+                content: content,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(function() {
+                alert("Лекция успешно сохранена в вашей базе!");
+                document.getElementById('lecture-title').value = "";
+                document.getElementById('lecture-content').value = "";
+            }).catch(function(err) {
+                alert("Ошибка сохранения: " + err.message);
+            });
+        });
+
+        // Подгрузка лекций из Firestore в реальном времени
+        function loadLectures() {
+            db.collection("lectures").orderBy("createdAt", "desc").onSnapshot(function(snapshot) {
+                var container = document.getElementById('lectures-container');
+                container.innerHTML = "";
+                if (snapshot.empty) {
+                    container.innerHTML = "<p>На платформе пока нет учебных материалов.</p>";
+                    return;
+                }
+                snapshot.forEach(function(doc) {
+                    var data = doc.data();
+                    var item = document.createElement('div');
+                    item.className = 'card';
+                    item.innerHTML = "<h3>" + (data.title || "Без названия") + "</h3><p>" + (data.content || "") + "</p>";
+                    container.appendChild(item);
+                });
+            }, function(error) {
+                showRuntimeError("Ошибка Firestore: " + error.message);
+            });
+        }
+
+    } catch (globalError) {
+        showRuntimeError(globalError.message);
+    }
+</script>
+</body>
+</html>
